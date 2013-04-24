@@ -21,3 +21,7 @@
     (transient-mark-mode t)
     )
   )
+
+(put 'eval-expression 'disabled nil)
+(put 'narrow-to-region 'disabled nil)
+(put 'narrow-to-page 'disabled nil)
