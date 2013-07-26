@@ -102,7 +102,10 @@ Will only occur if prelude-whitespace is also enabled."
                                          try-complete-lisp-symbol))
 
 ;; smart pairing for all
-(electric-pair-mode t)
+(require 'smartparens-config)
+(setq sp-base-key-bindings 'paredit)
+(setq sp-cancel-autoskip-on-backward-movement nil)
+(smartparens-global-mode +1)
 
 ;; diminish keeps the modeline tidy
 (require 'diminish)
@@ -134,7 +137,7 @@ Will only occur if prelude-whitespace is also enabled."
 ;; save recent files
 (require 'recentf)
 (setq recentf-save-file (expand-file-name "recentf" prelude-savefile-dir)
-      recentf-max-saved-items 200
+      recentf-max-saved-items 500
       recentf-max-menu-items 15)
 (recentf-mode +1)
 
@@ -145,23 +148,27 @@ Will only occur if prelude-whitespace is also enabled."
 ;; automatically save buffers associated with files on buffer switch
 ;; and on windows switch
 (defun prelude-auto-save-command ()
+  "Save the current buffer if `prelude-auto-save' is not nil."
   (when (and prelude-auto-save
              buffer-file-name
-             (buffer-modified-p (current-buffer)))
+             (buffer-modified-p (current-buffer))
+             (file-writable-p buffer-file-name))
     (save-buffer)))
 
-(defadvice switch-to-buffer (before save-buffer-now activate)
-  (prelude-auto-save-command))
-(defadvice other-window (before other-window-now activate)
-  (prelude-auto-save-command))
-(defadvice windmove-up (before other-window-now activate)
-  (prelude-auto-save-command))
-(defadvice windmove-down (before other-window-now activate)
-  (prelude-auto-save-command))
-(defadvice windmove-left (before other-window-now activate)
-  (prelude-auto-save-command))
-(defadvice windmove-right (before other-window-now activate)
-  (prelude-auto-save-command))
+(defmacro advise-commands (advice-name commands &rest body)
+  "Apply advice named ADVICE-NAME to multiple COMMANDS.
+
+The body of the advice is in BODY."
+  `(progn
+     ,@(mapcar (lambda (command)
+                 `(defadvice ,command (before ,(intern (concat (symbol-name command) "-" advice-name)) activate)
+                    ,@body))
+               commands)))
+
+;; advise all window switching functions
+(advise-commands "auto-save"
+                 (switch-to-buffer other-window windmove-up windmove-down windmove-left windmove-right)
+                 (prelude-auto-save-command))
 
 (add-hook 'mouse-leave-buffer-hook 'prelude-auto-save-command)
 
@@ -185,7 +192,7 @@ Will only occur if prelude-whitespace is also enabled."
    (if mark-active (list (region-beginning) (region-end))
      (message "Copied line")
      (list (line-beginning-position)
-           (line-beginning-position 2)))))
+           (line-end-position)))))
 
 (defadvice kill-region (before smart-cut activate compile)
   "When called interactively with no active region, kill a single line instead."
@@ -201,6 +208,8 @@ Will only occur if prelude-whitespace is also enabled."
 
 ;; ido-mode
 (require 'ido)
+(require 'ido-ubiquitous)
+(require 'flx-ido)
 (setq ido-enable-prefix nil
       ido-enable-flex-matching t
       ido-create-new-buffer 'always
@@ -209,9 +218,18 @@ Will only occur if prelude-whitespace is also enabled."
       ido-save-directory-list-file (expand-file-name "ido.hist" prelude-savefile-dir)
       ido-default-file-method 'selected-window)
 (ido-mode +1)
+(ido-ubiquitous-mode +1)
+;; smarter fuzzy matching for ido
+(flx-ido-mode +1)
+;; disable ido faces to see flx highlights
+(setq ido-use-faces nil)
 
-;; auto-completion in minibuffer
-(icomplete-mode +1)
+;; smex, remember recently and most frequently used commands
+(require 'smex)
+(setq smex-save-file (expand-file-name ".smex-items" prelude-savefile-dir))
+(smex-initialize)
+(global-set-key (kbd "M-x") 'smex)
+(global-set-key (kbd "M-X") 'smex-major-mode-commands)
 
 (set-default 'imenu-auto-rescan t)
 
@@ -221,14 +239,17 @@ Will only occur if prelude-whitespace is also enabled."
       ispell-extra-args '("--sug-mode=ultra"))
 
 (defun prelude-enable-flyspell ()
+  "Enable command `flyspell-mode' if `prelude-flyspell' is not nil."
   (when (and prelude-flyspell (executable-find ispell-program-name))
     (flyspell-mode +1)))
 
 (defun prelude-cleanup-maybe ()
+  "Invoke `whitespace-cleanup' if `prelude-clean-whitespace-on-save' is not nil."
   (when prelude-clean-whitespace-on-save
     (whitespace-cleanup)))
 
 (defun prelude-enable-whitespace ()
+  "Enable `whitespace-mode' if `prelude-whitespace' is not nil."
   (when prelude-whitespace
     ;; keep the whitespace decent all the time (in this buffer)
     (add-hook 'before-save-hook 'prelude-cleanup-maybe nil t)
@@ -246,18 +267,15 @@ Will only occur if prelude-whitespace is also enabled."
 (put 'upcase-region 'disabled nil)
 (put 'downcase-region 'disabled nil)
 
+;; enable erase-buffer command
+(put 'erase-buffer 'disabled nil)
+
 (require 'expand-region)
 
 ;; bookmarks
 (require 'bookmark)
 (setq bookmark-default-file (expand-file-name "bookmarks" prelude-savefile-dir)
       bookmark-save-flag 1)
-
-;; load yasnippet
-(require 'yasnippet)
-(add-to-list 'yas-snippet-dirs prelude-snippets-dir)
-(add-to-list 'yas-snippet-dirs prelude-personal-snippets-dir)
-(yas-global-mode 1)
 
 ;; projectile is a project management mode
 (require 'projectile)
@@ -273,13 +291,7 @@ Will only occur if prelude-whitespace is also enabled."
   (interactive)
   (condition-case nil
     (if (projectile-project-root)
-        ;; add project files and buffers when in project
-        (helm-other-buffer '(helm-c-source-projectile-files-list
-                             helm-c-source-projectile-buffers-list
-                             helm-c-source-buffers-list
-                             helm-c-source-recentf
-                             helm-c-source-buffer-not-found)
-                           "*helm prelude*")
+        (helm-projectile)
       ;; otherwise fallback to helm-mini
       (helm-mini))
     ;; fall back to helm mini if an error occurs (usually in projectile-project-root)
@@ -293,6 +305,14 @@ Will only occur if prelude-whitespace is also enabled."
 
 ;; dired - reuse current buffer by pressing 'a'
 (put 'dired-find-alternate-file 'disabled nil)
+
+;; always delete and copy recursively
+(setq dired-recursive-deletes 'always)
+(setq dired-recursive-copies 'always)
+
+;; if there is a dired buffer displayed in the next window, use its
+;; current subdir, instead of the current subdir of this dired buffer
+(setq dired-dwim-target t)
 
 ;; enable some really cool extensions like C-x C-j(dired-jump)
 (require 'dired-x)
@@ -348,6 +368,9 @@ indent yanked text (with prefix arg don't indent)."
 ;; make a shell script executable automatically on save
 (add-hook 'after-save-hook
           'executable-make-buffer-file-executable-if-script-p)
+
+;; .zsh file is shell script too
+(add-to-list 'auto-mode-alist '("\\.zsh\\'" . shell-script-mode))
 
 ;; whitespace-mode config
 (require 'whitespace)

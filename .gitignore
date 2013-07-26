@@ -17,6 +17,5 @@ places
 savefile/
 /prelude-modules.el
 projectile-bookmarks.eld
-ac-comphist.dat
-session.*
+session
 tramp

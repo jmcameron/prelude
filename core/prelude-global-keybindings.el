@@ -45,7 +45,7 @@
                                 (other-window -1))) ;; back one
 
 ;; Indentation help
-(global-set-key (kbd "C-x ^") 'join-line)
+(global-set-key (kbd "C-^") 'prelude-top-join-line)
 
 ;; Start proced in a similar manner to dired
 (global-set-key (kbd "C-x p") 'proced)
@@ -114,8 +114,11 @@
 ;; key chords
 (require 'key-chord)
 
-(key-chord-define-global "jj" 'ace-jump-mode)
+(key-chord-define-global "jj" 'ace-jump-word-mode)
+(key-chord-define-global "jl" 'ace-jump-line-mode)
+(key-chord-define-global "jk" 'ace-jump-char-mode)
 (key-chord-define-global "JJ" 'prelude-switch-to-previous-buffer)
+(key-chord-define-global "uu" 'undo-tree-visualize)
 
 (key-chord-mode +1)
 
